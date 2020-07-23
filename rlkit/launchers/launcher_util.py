@@ -143,8 +143,6 @@ def run_experiment_here(
 
     variant['other_variant']['vae_pkl_path'] = actual_log_dir
     variant['other_variant']['vae_beta'] = variant['skewfit_variant']['online_vae_trainer_kwargs']['beta']
-    import os
-    os.mkdir(str(actual_log_dir)+'/evaluation')
 
     set_seed(seed)
     set_gpu_mode(use_gpu)

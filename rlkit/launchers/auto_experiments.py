@@ -17,6 +17,9 @@ from rlkit.torch.skewfit.online_vae_algorithm import OnlineVaeAlgorithm
 from rlkit.util.io import load_local_or_remote_file
 from rlkit.util.video import dump_video
 
+import torch
+
+
 
 def auto_full_experiment(variant):
     variant['skewfit_variant']['save_vae_data'] = True
@@ -138,7 +141,7 @@ def train_vae(variant,return_data=False):
     save_period = variant['save_period']
     dump_skew_debug_plots = variant.get('dump_skew_debug_plots', False)
     for epoch in range(variant['num_epochs']):
-        should_save_imgs = (epoch % save_period == 100)
+        should_save_imgs = (epoch % save_period == 0)
         t.train_epoch(epoch)
         t.test_epoch(
             epoch,
@@ -207,12 +210,26 @@ def generate_vae_dataset(variant):
             print("loaded data from saved file", filename)
         else:
             now = time.time()
-
             if env_id is not None:
+
                 import gym
                 import multiworld
-                multiworld.register_all_envs()
-                env = gym.make(env_id)
+                if env_id == 'SawyerReachXYZEnv' or env_id == 'SawyerPushXYEnv':
+                    from sawyer_control.envs.sawyer_reaching import SawyerReachXYZEnv
+                    from sawyer_control.envs.sawyer_pushing import SawyerPushXYEnv
+                    env = SawyerReachXYZEnv()  
+                if variant['env_id'] == 'ElfinReachXYZEnv' or variant['env_id'] == 'ElfinPushXYEnv':
+                    from sawyer_control.envs.elfin_reaching import ElfinReachXYZEnv
+                    from sawyer_control.envs.elfin_pushing import ElfinPushXYEnv
+                    env = ElfinReachXYZEnv()
+                if variant['env_id'] == 'ElfinSimplePushXYZEnv':
+                    from sawyer_control.envs.elfin_simple_push import ElfinSimplePushXYZEnv
+                    env = ElfinSimplePushXYZEnv()                   
+                else:
+                    multiworld.register_all_envs()
+                    env = gym.make(env_id)
+
+                
             else:
                 if vae_dataset_specific_env_kwargs is None:
                     vae_dataset_specific_env_kwargs = {}
@@ -229,6 +246,8 @@ def generate_vae_dataset(variant):
                     normalize=True,
                     non_presampled_goal_img_is_garbage=non_presampled_goal_img_is_garbage,
                 )
+                import time as time_sleep
+                time_sleep.sleep(0.5) 
             else:
                 imsize = env.imsize
                 env.non_presampled_goal_img_is_garbage = non_presampled_goal_img_is_garbage
@@ -242,7 +261,7 @@ def generate_vae_dataset(variant):
                 from rlkit.exploration_strategies.ou_strategy import OUStrategy
                 policy = OUStrategy(env.action_space)
             dataset = np.zeros((N, imsize * imsize * num_channels),
-                               dtype=np.uint8)
+                               dtype=np.uint8)           
             for i in range(N):
                 if random_and_oracle_policy_data:
                     num_random_steps = int(
@@ -314,11 +333,32 @@ def get_envs(variant):
 
     vae = load_local_or_remote_file(vae_path) if type(
         vae_path) is str else vae_path
+
+    use_pkl=input("Use previous VAE model? (yes/no)")
+    
+    if use_pkl == "yes":
+        path_to_pkl = input("The path is (../../previous_model/$DATA/params.pkl)?")
+        previous_model = torch.load(path_to_pkl)
+        vae = previous_model['vae']
+
     if 'env_id' in variant:
         import gym
         import multiworld
-        multiworld.register_all_envs()
-        env = gym.make(variant['env_id'])
+        if variant['env_id'] == 'SawyerReachXYZEnv' or variant['env_id'] == 'SawyerPushXYEnv':
+            from sawyer_control.envs.sawyer_reaching import SawyerReachXYZEnv
+            from sawyer_control.envs.sawyer_pushing import SawyerPushXYEnv
+            env = SawyerReachXYZEnv()
+        if variant['env_id'] == 'ElfinReachXYZEnv' or variant['env_id'] == 'ElfinPushXYEnv':
+            from sawyer_control.envs.elfin_reaching import ElfinReachXYZEnv
+            from sawyer_control.envs.elfin_pushing import ElfinPushXYEnv
+            env = ElfinReachXYZEnv()
+        if variant['env_id'] == 'ElfinSimplePushXYZEnv':
+            from sawyer_control.envs.elfin_simple_push import ElfinSimplePushXYZEnv
+            env = ElfinSimplePushXYZEnv()
+
+        else:
+            multiworld.register_all_envs()
+            env = gym.make(variant['env_id'])
     else:
         env = variant["env_class"](**variant['env_kwargs'])
     if not do_state_exp:
@@ -332,6 +372,8 @@ def get_envs(variant):
                 transpose=True,
                 normalize=True,
             )
+            import time as time_sleep
+            time_sleep.sleep(0.5)
         if presample_goals:
             """
             This will fail for online-parallel as presampled_goals will not be
@@ -369,6 +411,8 @@ def get_envs(variant):
                 presampled_goals=presampled_goals,
                 **variant.get('image_env_kwargs', {})
             )
+            import time as time_sleep
+            time_sleep.sleep(0.5) 
             vae_env = VAEWrappedEnv(
                 image_env,
                 vae,
@@ -496,6 +540,11 @@ def skewfit_experiment(variant, other_variant):
         action_dim=action_dim,
         hidden_sizes=hidden_sizes,
     )
+    use_pkl=input("Use previous policy model? (yes/no)")
+    if use_pkl == "yes":
+        path_to_pkl = input("The path is (../../previous_model/$DATA/params.pkl)?")
+        previous_model = torch.load(path_to_pkl)
+        policy = previous_model['trainer/policy']
 
     vae = env.vae
 
@@ -563,6 +612,8 @@ def skewfit_experiment(variant, other_variant):
 
     algorithm.to(ptu.device)
     vae.to(ptu.device)
+    import time as time_sleep
+    time_sleep.sleep(0.5)
     algorithm.train()
 
 
@@ -581,6 +632,8 @@ def get_video_save_func(rollout_function, env, policy, variant):
             transpose=True,
             normalize=True,
         )
+        import time as time_sleep
+        time_sleep.sleep(0.5) 
 
         def save_video(algo, epoch):
             if epoch % save_period == 0 or epoch == algo.num_epochs:

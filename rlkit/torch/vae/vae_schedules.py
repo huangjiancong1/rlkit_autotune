@@ -1,5 +1,5 @@
 def always_train(epoch):
-    return True, 500
+    return True, 300
 
 
 def custom_schedule(epoch):

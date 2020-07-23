@@ -32,7 +32,8 @@ def rollout(env, agent, max_path_length=np.inf, render=False):
     next_o = None
     path_length = 0
     if render:
-        env.render()
+        # env.render()
+        pass
     while path_length < max_path_length:
         a, agent_info = agent.get_action(o)
         next_o, r, d, env_info = env.step(a)
@@ -47,7 +48,8 @@ def rollout(env, agent, max_path_length=np.inf, render=False):
             break
         o = next_o
         if render:
-            env.render()
+            # env.render()
+            pass
 
     actions = np.array(actions)
     if len(actions.shape) == 1:

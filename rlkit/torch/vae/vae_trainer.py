@@ -399,6 +399,7 @@ class ConvVAETrainer(object):
             losses.append(loss.item())
             log_probs.append(log_prob.item())
             kles.append(kle.item())
+
             if batch_idx == 0 and save_reconstruction:
                 n = min(next_obs.size(0), 8)
                 comparison = torch.cat([

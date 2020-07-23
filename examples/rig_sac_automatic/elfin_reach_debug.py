@@ -4,8 +4,9 @@ from rlkit.launchers.launcher_util import run_experiment
 import rlkit.torch.vae.vae_schedules as vae_schedules
 from rlkit.launchers.auto_experiments import auto_full_experiment
 from rlkit.torch.vae.conv_vae import imsize48_default_architecture
-from multiworld.envs.mujoco.sawyer_xyz.sawyer_push_nips import SawyerPushAndReachXYEasyEnv
 
+from sawyer_control.envs.sawyer_reaching import SawyerReachXYZEnv
+from sawyer_control.envs.elfin_reaching import ElfinReachXYZEnv
 
 if __name__ == "__main__":
     variant = dict(
@@ -14,21 +15,7 @@ if __name__ == "__main__":
         online_vae_exploration=False,
         imsize=48,
         init_camera=sawyer_init_camera_zoomed_in,
-        # env_id='SawyerPushNIPSEasy-v0',
-        env_class=SawyerPushAndReachXYEasyEnv,
-        env_kwargs=dict(
-            force_puck_in_goal_space=False,
-            mocap_low=(-0.1, 0.55, 0.05),
-            mocap_high=(0.0, 0.65, 0.13),
-            hand_goal_low=(-0.1, 0.55),# 10*10*8 cm^3
-            hand_goal_high=(0.0, 0.65),
-            # puck_goal_low=(-0.1, 0.55, 0.05),# 10*10*8 cm^3
-            # puck_goal_high=(0.0, 0.65, 0.13),
-            hide_goal=True,
-            reward_info=dict(
-                type="state_distance",
-            ),
-        ),
+        env_id='ElfinReachXYZEnv',
         skewfit_variant=dict(
             save_video=True,
             custom_goal_sampler='replay_buffer',
@@ -49,12 +36,12 @@ if __name__ == "__main__":
             max_path_length=50,
             algo_kwargs=dict(
                 batch_size=1024,
-                num_epochs=50,
+                num_epochs=400,
                 num_eval_steps_per_epoch=500,
                 num_expl_steps_per_train_loop=500,
                 num_trains_per_train_loop=1000,
-                min_num_steps_before_training=10000,
-                vae_training_schedule=vae_schedules.always_train,
+                min_num_steps_before_training=50,
+                vae_training_schedule=vae_schedules.custom_schedule,
                 oracle_data=False,
                 vae_save_period=50,
                 parallel_vae_train=False,
@@ -68,7 +55,7 @@ if __name__ == "__main__":
             ),
             replay_buffer_kwargs=dict(
                 start_skew_epoch=10,
-                max_size=int(300000),
+                max_size=int(100000),
                 fraction_goals_rollout_goals=0.2,
                 fraction_goals_env_goals=0.5,
                 exploration_rewards_type='None',
@@ -100,18 +87,23 @@ if __name__ == "__main__":
         ),
         other_variant=dict(
             vae_pkl_path=None,
-            use_automatic_schedule=True,
-            automatic_policy_type='elbo',
-            automatic_policy_discount=0.2,
+            use_automatic_schedule=False,
+            automatic_policy_type='times',
+            automatic_policy_weight=50,
+            env_name='ElfinReachXYZEnv',
+            use_pre_initialization_steps=True,
+            # use_goid=False,
+            # goid_up=90,
+            # goid_low=10,
         ),
         train_vae_variant=dict(
             representation_size=4,
             beta=20,
-            num_epochs=1500,
+            num_epochs=0,
             dump_skew_debug_plots=False,
             decoder_activation='gaussian',
             generate_vae_dataset_kwargs=dict(
-                N=10000,
+                N=1,
                 test_p=.9,
                 use_cached=False,
                 show=False,
@@ -155,7 +147,7 @@ if __name__ == "__main__":
 
     n_seeds = 5
     mode = 'ec2'
-    exp_prefix = 'rig-sac-push-auto'
+    exp_prefix = 'elfin-reach-env-debug'
 
     for exp_id, variant in enumerate(sweeper.iterate_hyperparameters()):
         for _ in range(n_seeds):

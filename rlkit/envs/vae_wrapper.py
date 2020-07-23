@@ -12,6 +12,7 @@ from multiworld.core.multitask_env import MultitaskEnv
 from multiworld.envs.env_util import get_stat_in_paths, create_stats_ordered_dict
 from rlkit.envs.wrappers import ProxyEnv
 
+import numpy
 
 class VAEWrappedEnv(ProxyEnv, MultitaskEnv):
     """This class wraps an image-based environment with a VAE.
@@ -89,10 +90,12 @@ class VAEWrappedEnv(ProxyEnv, MultitaskEnv):
 
 
     def reset(self):
+        input('Ready to env.reset, please randomly place object at worksapce as you want and press Enter before _update obs...')
         obs = self.wrapped_env.reset()
         goal = self.sample_goal()
         self.set_goal(goal)
         self._initial_obs = obs
+        print("reset done")
         return self._update_obs(obs)
 
     def step(self, action):
@@ -151,7 +154,11 @@ class VAEWrappedEnv(ProxyEnv, MultitaskEnv):
                 sampled_goals['latent_desired_goal'] = self._encode(sampled_goals['image_desired_goal'])
             return sampled_goals
         elif self._goal_sampling_mode == 'env':
+            import ipdb; ipdb.set_trace()
             goals = self.wrapped_env.sample_goals(batch_size)
+            latent_goals = self._encode(goals[self.vae_input_desired_goal_key])
+        elif self._goal_sampling_mode == 'single_image':
+            goals = self.wrapped_env.load_single_image(batch_size)
             latent_goals = self._encode(goals[self.vae_input_desired_goal_key])
         elif self._goal_sampling_mode == 'reset_of_env':
             assert batch_size == 1
@@ -267,7 +274,8 @@ class VAEWrappedEnv(ProxyEnv, MultitaskEnv):
             'presampled',
             'vae_prior',
             'env',
-            'reset_of_env'
+            'reset_of_env',
+            'single_image'
         ], "Invalid env mode"
         self._goal_sampling_mode = mode
         if mode == 'custom_goal_sampler':

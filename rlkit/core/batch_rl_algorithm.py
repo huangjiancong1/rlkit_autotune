@@ -8,8 +8,10 @@ from rlkit.samplers.data_collector import PathCollector
 import pandas as pd
 from rlkit.core import logger
 import math
-import os
+
+import time as time_sleep
 import numpy as np
+
 
 class BatchRLAlgorithm(BaseRLAlgorithm, metaclass=abc.ABCMeta):
     def __init__(
@@ -50,11 +52,34 @@ class BatchRLAlgorithm(BaseRLAlgorithm, metaclass=abc.ABCMeta):
 
     def _train(self):
         if self.min_num_steps_before_training > 0:
-            init_expl_paths = self.expl_data_collector.collect_new_paths(
-                self.max_path_length,
-                self.min_num_steps_before_training,
-                discard_incomplete_paths=False,
-            )
+            print('In initial exploration steps: ', str(self.min_num_steps_before_training))
+            # TODO: use npy to save it and load it
+            if self.automatic_policy_schedule['use_pre_initialization_steps']:
+                env_name=self.automatic_policy_schedule['env_name']
+                try:
+                    init_expl_paths =np.load('/tmp/'+env_name+'_'+str(self.min_num_steps_before_training)+'_initilized_steps.npy', 
+                            allow_pickle=True
+                        )
+                    print('\nLoad previous saved initialization steps directly to save the times')
+                except:
+                    print('The history initialization steps is empty...') 
+                    print('...need to running long time to initialization')
+                    init_expl_paths = self.expl_data_collector.collect_new_paths(
+                        self.max_path_length,
+                        self.min_num_steps_before_training,
+                        discard_incomplete_paths=False,
+                    )
+                    np.save('/tmp/'+env_name+'_'+str(self.min_num_steps_before_training)+'_initilized_steps.npy', init_expl_paths)
+            
+            else:
+                init_expl_paths = self.expl_data_collector.collect_new_paths(
+                    self.max_path_length,
+                    self.min_num_steps_before_training,
+                    discard_incomplete_paths=False,
+                )
+
+            assert len(init_expl_paths) == int(self.min_num_steps_before_training/50)
+
             self.replay_buffer.add_paths(init_expl_paths)
             self.expl_data_collector.end_epoch(-1)
 
@@ -62,22 +87,12 @@ class BatchRLAlgorithm(BaseRLAlgorithm, metaclass=abc.ABCMeta):
                 range(self._start_epoch, self.num_epochs),
                 save_itrs=True,
         ): # episodes
-            new_eval_paths = self.eval_data_collector.collect_new_paths(
+            print('\n****In evaluation steps: ', str(self.num_eval_steps_per_epoch))
+            self.eval_data_collector.collect_new_paths(
                 self.max_path_length,
                 self.num_eval_steps_per_epoch,
                 discard_incomplete_paths=True,
-            )        
-            ## coverage evaluation recorder
-            env_infos = []
-            for eval_path in new_eval_paths:
-                env_info = eval_path['env_infos']
-                env_infos.append(env_info)
-            try:
-                if self.automatic_policy_schedule['test_coverage'] == True:
-                    np.save(self.automatic_policy_schedule['vae_pkl_path']+'/evaluation/'+str(epoch)+'_evalation.npy', env_infos)
-            except:
-                pass
-
+            )
             gt.stamp('evaluation sampling')
 
             ## Automatic policy schedule
@@ -98,6 +113,8 @@ class BatchRLAlgorithm(BaseRLAlgorithm, metaclass=abc.ABCMeta):
                         self.num_trains_per_train_loop = int(discount*minus_elbo)
 
             for _ in range(self.num_train_loops_per_epoch): #1
+                # time_sleep.sleep(0.5)
+                print('\n****In exploration steps: ', str(self.num_expl_steps_per_train_loop))
                 new_expl_paths = self.expl_data_collector.collect_new_paths(
                     self.max_path_length,
                     self.num_expl_steps_per_train_loop,
@@ -107,14 +124,15 @@ class BatchRLAlgorithm(BaseRLAlgorithm, metaclass=abc.ABCMeta):
 
                 self.replay_buffer.add_paths(new_expl_paths)
                 gt.stamp('data storing', unique=False)
-
                 self.training_mode(True)
-                for _ in range(self.num_trains_per_train_loop):
+                
+                for ee in range(self.num_trains_per_train_loop):
+                    print('\n*********In off-policy learning steps: '+str(ee)+'/'+str(self.num_trains_per_train_loop))
                     train_data = self.replay_buffer.random_batch(
                         self.batch_size)
                     self.trainer.train(train_data)
                 gt.stamp('training', unique=False)
                 self.training_mode(False)
-
             logger.record_tabular('Policy Iteration', self.num_trains_per_train_loop)
             self._end_epoch(epoch)
+            print('-------------------------Finish '+str(epoch)+' loop-------------------------')

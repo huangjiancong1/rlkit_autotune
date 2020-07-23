@@ -122,6 +122,7 @@ class GoalConditionedPathCollector(PathCollector):
                 max_path_length,
                 num_steps - num_steps_collected,
             )
+            print('\n   Finishing steps: ', str(num_steps_collected)+'/'+str(num_steps))
             path = multitask_rollout(
                 self._env,
                 self._policy,

@@ -1,4 +1,10 @@
 import numpy as np
+import time as time_sleep
+
+def process_bar(percent, start_str='>', end_str='', total_length=0):
+    bar = '>'.join(["\033[31m%s\033[0m"%'>'] * int(percent * total_length)) + ''
+    bar = '\r' + start_str + bar.ljust(total_length) + ' {:0>4.1f}%|'.format(percent*100) + end_str
+    print(bar, end=' ', flush=True)
 
 
 def multitask_rollout(
@@ -48,6 +54,11 @@ def multitask_rollout(
         dict_next_obs.append(next_o)
         agent_infos.append(agent_info)
         env_infos.append(env_info)
+
+        ## process monitor bar
+        end_str = '100%'
+        process_bar(path_length/(max_path_length-1), start_str='', end_str=end_str, total_length=15)
+
         path_length += 1
         if d:
             break
