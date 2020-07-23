@@ -16,3 +16,4 @@ python examples/rig_sac_automatic/elfin_reach_auto.py
 
 ## 4. Other
 Video about how the diversity of the hardware environment change online: https://drive.google.com/file/d/1GLYQ4bP7t_oQQhuy84qsk1WMIcPAomP0/view?usp=sharing
+.
