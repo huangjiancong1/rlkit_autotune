@@ -1,10 +1,13 @@
-# AutoSPI 
+# Autotune
+
 ## 1. Installation
 Follow https://github.com/vitchyr/rlkit
 
 ## 2. The Simulated Experiment
 ```
-python examples/rig_sac_automatic/rig_sac_push_auto.py
+python examples/autotune_r_size/rig_sac_push_autotune.py
+python examples/autotune_nogu/rig_sac_push_autotune.py
+python examples/autotune_expl/rig_sac_push_autotune.py
 ```
 
 ## 3. The Hardware Experiment
