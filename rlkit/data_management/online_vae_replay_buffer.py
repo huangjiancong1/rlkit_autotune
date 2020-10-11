@@ -17,6 +17,7 @@ class OnlineVaeRelabelingBuffer(SharedObsDictRelabelingBuffer):
 
     def __init__(
             self,
+            automatic_policy_schedule,
             vae,
             *args,
             decoded_obs_key='image_observation',
@@ -30,6 +31,7 @@ class OnlineVaeRelabelingBuffer(SharedObsDictRelabelingBuffer):
             internal_keys=None,
             priority_function_kwargs=None,
             relabeling_goal_sampling_mode='vae_prior',
+            max_path_length=50,
             **kwargs
     ):
         if internal_keys is None:
@@ -87,6 +89,10 @@ class OnlineVaeRelabelingBuffer(SharedObsDictRelabelingBuffer):
         self.epoch = 0
         self._register_mp_array("_exploration_rewards")
         self._register_mp_array("_vae_sample_priorities")
+
+        self.automatic_policy_schedule = automatic_policy_schedule
+
+        self.max_path_length = max_path_length
 
     def add_path(self, path):
         self.add_decoded_vae_goals_to_path(path)
@@ -249,6 +255,12 @@ class OnlineVaeRelabelingBuffer(SharedObsDictRelabelingBuffer):
             indices = self._sample_indices(batch_size)
         return indices
 
+
+    def sample_vae_indices(self, batch_size):
+        train_indices = self._sample_odd_indices(batch_size)
+        test_indices = self._sample_even_indices(batch_size)
+        return train_indices, test_indices
+
     def _sample_goals_from_env(self, batch_size):
         self.env.goal_sampling_mode = self._relabeling_goal_sampling_mode
         return self.env.sample_goals(batch_size)
@@ -281,7 +293,7 @@ class OnlineVaeRelabelingBuffer(SharedObsDictRelabelingBuffer):
     def random_vae_training_data(self, batch_size, epoch):
         # epoch no longer needed. Using self.skew in sample_weighted_indices
         # instead.
-        weighted_idxs = self.sample_weighted_indices(
+        weighted_idxs, _ = self.sample_vae_indices(
             batch_size,
         )
 
@@ -291,6 +303,21 @@ class OnlineVaeRelabelingBuffer(SharedObsDictRelabelingBuffer):
         return dict(
             next_obs=ptu.from_numpy(next_image_obs)
         )
+    
+    def random_vae_testing_data(self, batch_size, epoch):
+        # epoch no longer needed. Using self.skew in sample_weighted_indices
+        # instead.
+        _, weighted_idxs = self.sample_vae_indices(
+            batch_size,
+        )
+
+        next_image_obs = normalize_image(
+            self._next_obs[self.decoded_obs_key][weighted_idxs]
+        )
+        return dict(
+            next_obs=ptu.from_numpy(next_image_obs)
+        )
+
 
     def vae_prob(self, next_vae_obs, indices, **kwargs):
         return compute_p_x_np_to_np(

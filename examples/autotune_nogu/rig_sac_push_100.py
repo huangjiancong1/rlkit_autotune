@@ -49,10 +49,10 @@ if __name__ == "__main__":
             max_path_length=50,
             algo_kwargs=dict(
                 batch_size=1024,
-                num_epochs=50,
+                num_epochs=100,
                 num_eval_steps_per_epoch=500,
                 num_expl_steps_per_train_loop=500,
-                num_trains_per_train_loop=1000,
+                num_trains_per_train_loop=100,
                 min_num_steps_before_training=10000,
                 vae_training_schedule=vae_schedules.always_train,
                 oracle_data=False,
@@ -80,6 +80,7 @@ if __name__ == "__main__":
                 ),
                 power=0,
                 relabeling_goal_sampling_mode='vae_prior',
+                max_path_length=50,
             ),
             exploration_goal_sampling_mode='vae_prior',
             evaluation_goal_sampling_mode='reset_of_env',
@@ -100,9 +101,24 @@ if __name__ == "__main__":
         ),
         other_variant=dict(
             vae_pkl_path=None,
-            use_automatic_schedule=True,
-            automatic_policy_type='elbo',
-            automatic_policy_discount=0.2,
+            use_autotune=False,
+            # Degree of judge VAE is fine-tuned well
+            auto_start_threshold=10, 
+            # autotune number of gradient updates
+            autotune_nogu=False,
+            autotune_nogu_mode='elbo',
+            autotune_nogu_discount=1,
+            # autotune exploration steps
+            autotune_expl=False,
+            autotune_expl_mode='elbo',
+            autotune_expl_multiplier=1,
+            # autotune the size of replay buffer
+            autotune_r_size=False,
+            autotune_r_size_mode='max_path_lenth_times_elbo',
+            # auto intrinsic
+            use_intrinsic_bonus=False,
+            intrinsic_reward='minus_log',
+            autotune_alpha=False,
         ),
         train_vae_variant=dict(
             representation_size=4,
@@ -155,7 +171,7 @@ if __name__ == "__main__":
 
     n_seeds = 5
     mode = 'ec2'
-    exp_prefix = 'rig-sac-push-auto'
+    exp_prefix = 'rig-sac-push-nogu-100'
 
     for exp_id, variant in enumerate(sweeper.iterate_hyperparameters()):
         for _ in range(n_seeds):

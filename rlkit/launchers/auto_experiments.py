@@ -134,7 +134,7 @@ def train_vae(variant,return_data=False):
     )
     m.to(ptu.device)
     t = ConvVAETrainer(train_data, test_data, m, beta=beta,
-                       beta_schedule=beta_schedule, **variant['algo_kwargs'])
+                       beta_schedule=beta_schedule, **variant['algo_kwargs'], mode='pretrain_vae')
     save_period = variant['save_period']
     dump_skew_debug_plots = variant.get('dump_skew_debug_plots', False)
     for epoch in range(variant['num_epochs']):
@@ -500,6 +500,7 @@ def skewfit_experiment(variant, other_variant):
     vae = env.vae
 
     replay_buffer = OnlineVaeRelabelingBuffer(
+        automatic_policy_schedule=other_variant,
         vae=env.vae,
         env=env,
         observation_key=observation_key,
@@ -511,12 +512,13 @@ def skewfit_experiment(variant, other_variant):
         variant['vae_train_data'],
         variant['vae_test_data'],
         env.vae,
-        **variant['online_vae_trainer_kwargs']
+        **variant['online_vae_trainer_kwargs'],
+        mode='online_vae'
     )
     assert 'vae_training_schedule' not in variant, "Just put it in algo_kwargs"
     max_path_length = variant['max_path_length']
-
     trainer = SACTrainer(
+        automatic_policy_schedule=other_variant,
         env=env,
         policy=policy,
         qf1=qf1,
@@ -531,6 +533,7 @@ def skewfit_experiment(variant, other_variant):
         env,
         MakeDeterministic(policy),
         max_path_length,
+        other_variant=other_variant,
         observation_key=observation_key,
         desired_goal_key=desired_goal_key,
     )
@@ -539,6 +542,7 @@ def skewfit_experiment(variant, other_variant):
         env,
         policy,
         max_path_length,
+        other_variant=other_variant,
         observation_key=observation_key,
         desired_goal_key=desired_goal_key,
     )

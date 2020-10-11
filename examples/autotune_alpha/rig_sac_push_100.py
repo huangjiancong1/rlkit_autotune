@@ -18,10 +18,10 @@ if __name__ == "__main__":
         env_class=SawyerPushAndReachXYEasyEnv,
         env_kwargs=dict(
             force_puck_in_goal_space=False,
-            mocap_low=(-0.1, 0.5, 0.05),
-            mocap_high=(0.1, 0.7, 0.13),
+            mocap_low=(-0.1, 0.55, 0.05),
+            mocap_high=(0.0, 0.65, 0.13),
             hand_goal_low=(-0.1, 0.55),# 10*10*8 cm^3
-            hand_goal_high=(0.1, 0.65),
+            hand_goal_high=(0.0, 0.65),
             # puck_goal_low=(-0.1, 0.55, 0.05),# 10*10*8 cm^3
             # puck_goal_high=(0.0, 0.65, 0.13),
             hide_goal=True,
@@ -49,14 +49,14 @@ if __name__ == "__main__":
             max_path_length=50,
             algo_kwargs=dict(
                 batch_size=1024,
-                num_epochs=50,
-                num_eval_steps_per_epoch=5000,
-                num_expl_steps_per_train_loop=500,
-                num_trains_per_train_loop=1000,
-                min_num_steps_before_training=10000,
+                num_epochs=200,
+                num_eval_steps_per_epoch=500,
+                num_expl_steps_per_train_loop=100,
+                num_trains_per_train_loop=100,
+                min_num_steps_before_training=500,
                 vae_training_schedule=vae_schedules.always_train,
                 oracle_data=False,
-                vae_save_period=50,
+                vae_save_period=2,
                 parallel_vae_train=False,
             ),
             twin_sac_trainer_kwargs=dict(
@@ -82,7 +82,7 @@ if __name__ == "__main__":
                 relabeling_goal_sampling_mode='vae_prior',
             ),
             exploration_goal_sampling_mode='vae_prior',
-            evaluation_goal_sampling_mode='env',
+            evaluation_goal_sampling_mode='reset_of_env',
             normalize=False,
             render=False,
             exploration_noise=0.0,
@@ -100,19 +100,30 @@ if __name__ == "__main__":
         ),
         other_variant=dict(
             vae_pkl_path=None,
-            use_automatic_schedule=True,
-            automatic_policy_type='elbo',
-            automatic_policy_discount=0.2,
-            test_coverage=True,
+            use_autotune=False,
+            # Degree of judge VAE is fine-tuned well
+            auto_start_threshold=10, 
+            # autotune number of gradient updates
+            autotune_nogu=False,
+            autotune_nogu_mode='None',
+            autotune_nogu_discount=1,
+            # autotune exploration steps
+            autotune_expl=True,
+            autotune_expl_mode='delta',
+            autotune_expl_multiplier=50,
+            # auto intrinsic
+            use_intrinsic_bonus=False,
+            intrinsic_reward='minus_log',
+            autotune_alpha=False,
         ),
         train_vae_variant=dict(
             representation_size=4,
             beta=20,
-            num_epochs=1500,
+            num_epochs=1,
             dump_skew_debug_plots=False,
             decoder_activation='gaussian',
             generate_vae_dataset_kwargs=dict(
-                N=10000,
+                N=40,
                 test_p=.9,
                 use_cached=False,
                 show=False,
@@ -156,7 +167,7 @@ if __name__ == "__main__":
 
     n_seeds = 5
     mode = 'ec2'
-    exp_prefix = 'rig-sac-push-l-ws-auto-coverage'
+    exp_prefix = 'rig-sac-push-nogu-100-expl-100'
 
     for exp_id, variant in enumerate(sweeper.iterate_hyperparameters()):
         for _ in range(n_seeds):

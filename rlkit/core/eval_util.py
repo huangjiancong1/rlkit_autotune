@@ -17,6 +17,14 @@ def get_generic_path_information(paths, stat_prefix=''):
     statistics = OrderedDict()
     returns = [sum(path["rewards"]) for path in paths]
 
+    intrinsic_rewards = np.vstack([path["intrinsic_rewards"] for path in paths])
+    statistics.update(create_stats_ordered_dict('Intrinsic Rewards', intrinsic_rewards,
+                                                stat_prefix=stat_prefix))
+
+    extrinsic_rewards = np.vstack([path["extrinsic_rewards"] for path in paths])
+    statistics.update(create_stats_ordered_dict('Extrinsic Rewards', extrinsic_rewards,
+                                                stat_prefix=stat_prefix))
+
     rewards = np.vstack([path["rewards"] for path in paths])
     statistics.update(create_stats_ordered_dict('Rewards', rewards,
                                                 stat_prefix=stat_prefix))

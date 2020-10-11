@@ -9,10 +9,13 @@ import rlkit.torch.pytorch_util as ptu
 from rlkit.core.eval_util import create_stats_ordered_dict
 from rlkit.torch.torch_rl_algorithm import TorchTrainer
 
+import pandas as pd
+
 
 class SACTrainer(TorchTrainer):
     def __init__(
             self,
+            automatic_policy_schedule,
             env,
             policy,
             qf1,
@@ -82,6 +85,16 @@ class SACTrainer(TorchTrainer):
         self._n_train_steps_total = 0
         self._need_to_update_eval_statistics = True
 
+        self.automatic_policy_schedule = automatic_policy_schedule
+
+    def MaxMinNormalization(self,x,Max,Min):
+        if Max==0 and Min ==0:
+            x = 0
+        else:
+            x = (x - Min) / (Max - Min)
+        
+        return x
+
     def train_from_torch(self, batch):
         rewards = batch['rewards']
         terminals = batch['terminals']
@@ -96,14 +109,39 @@ class SACTrainer(TorchTrainer):
             obs, reparameterize=True, return_log_prob=True,
         )
         if self.use_automatic_entropy_tuning:
-            alpha_loss = -(self.log_alpha * (log_pi + self.target_entropy).detach()).mean()
-            self.alpha_optimizer.zero_grad()
-            alpha_loss.backward()
-            self.alpha_optimizer.step()
-            alpha = self.log_alpha.exp()
+            # Autotune with H(R)
+            if self.automatic_policy_schedule['autotune_alpha'] == True:
+                try:
+                    progress_recorder = pd.read_csv(self.automatic_policy_schedule['vae_pkl_path']+'/progress.csv').to_dict('l')
+                    
+                    if len(progress_recorder['vae_trainer/test/loss']) == 1:
+                        minus_elbo = 0
+                        delta_elbo_stable_value =0
+                        alpha = torch.tensor(0)
+                    else:
+                        delta_elbo_stable_value = progress_recorder['Delta ELBO']
+                        # minus_elbo = progress_recorder['vae_trainer/test/loss'][-1]
+                        # old_minus_elbo = progress_recorder['vae_trainer/test/loss'][-2]
+                        alpha = self.MaxMinNormalization(delta_elbo_stable_value[-1], np.max(delta_elbo_stable_value), np.min(delta_elbo_stable_value))
+                        alpha = torch.tensor(alpha)
+                except:
+                    minus_elbo = 0
+                    old_minus_elbo = minus_elbo
+                    delta_elbo_stable_value= 0
+                    alpha = torch.tensor(0)
+                
+                alpha_loss = torch.tensor(0)
+
+            else:
+                # TODO: What's self.log_alpha ?
+                alpha_loss = -(self.log_alpha * (log_pi + self.target_entropy).detach()).mean()
+                self.alpha_optimizer.zero_grad()
+                alpha_loss.backward()
+                self.alpha_optimizer.step()
+                alpha = self.log_alpha.exp()
         else:
-            alpha_loss = 0
-            alpha = 1
+            alpha_loss = torch.tensor(0)
+            alpha = torch.tensor(1)
 
         q_new_actions = torch.min(
             self.qf1(obs, new_obs_actions),

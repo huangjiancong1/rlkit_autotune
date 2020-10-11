@@ -129,6 +129,7 @@ class ConvVAETrainer(object):
             priority_function_kwargs=None,
             start_skew_epoch=0,
             weight_decay=0,
+            mode=None,
     ):
         if skew_config is None:
             skew_config = {}
@@ -229,6 +230,7 @@ class ConvVAETrainer(object):
             )
         self.eval_statistics = OrderedDict()
         self._extra_stats_to_log = None
+        self.mode=mode
 
     def get_dataset_stats(self, data):
         torch_input = ptu.from_numpy(normalize_image(data))
@@ -375,8 +377,10 @@ class ConvVAETrainer(object):
     def test_epoch(
             self,
             epoch,
+            sample_batch = None,
             save_reconstruction=True,
             save_vae=True,
+            batches=20,
             from_rl=False,
     ):
         self.model.eval()
@@ -385,8 +389,17 @@ class ConvVAETrainer(object):
         kles = []
         zs = []
         beta = float(self.beta_schedule.get_value(epoch))
-        for batch_idx in range(10):
-            next_obs = self.get_batch(train=False)
+        # for batch_idx in range(int(batches*0.2)): # 0.2 of the size of train minibatchs
+        for batch_idx in range(int(batches*1)): # 1 of the size of train minibatchs
+            if sample_batch is not None:
+                data = sample_batch(self.batch_size, epoch)
+                # obs = data['obs']
+                next_obs = data['next_obs']
+                # actions = data['actions']
+            else:
+                next_obs = self.get_batch(epoch=epoch)
+                obs = None
+                actions = None
             reconstructions, obs_distribution_params, latent_distribution_params = self.model(next_obs)
             log_prob = self.model.logprob(next_obs, obs_distribution_params)
             kle = self.model.kl_divergence(latent_distribution_params)
@@ -413,8 +426,9 @@ class ConvVAETrainer(object):
                         self.imsize,
                     )[:n].transpose(2, 3)
                 ])
-                save_dir = osp.join(logger.get_snapshot_dir(),
-                                    'r%d.png' % epoch)
+                # save_dir = osp.join(logger.get_snapshot_dir(),
+                #                     , self.mode+'_r%d.png' % epoch)
+                save_dir = osp.join(logger.get_snapshot_dir(), self.mode+'_r%d.png' % epoch)
                 save_image(comparison.data.cpu(), save_dir, nrow=n)
 
         zs = np.array(zs)
@@ -475,7 +489,8 @@ class ConvVAETrainer(object):
         self.model.eval()
         sample = ptu.randn(64, self.representation_size)
         sample = self.model.decode(sample)[0].cpu()
-        save_dir = osp.join(logger.get_snapshot_dir(), 's%d.png' % epoch)
+        # save_dir = osp.join(logger.get_snapshot_dir(), 's%d.png' % epoch)
+        save_dir = osp.join(logger.get_snapshot_dir(), self.mode+'_s%d.png' % epoch)
         save_image(
             sample.data.view(64, self.input_channels, self.imsize, self.imsize).transpose(2, 3),
             save_dir

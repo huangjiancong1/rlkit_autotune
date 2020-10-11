@@ -2,9 +2,12 @@ import rlkit.util.hyperparameter as hyp
 from multiworld.envs.mujoco.cameras import sawyer_init_camera_zoomed_in
 from rlkit.launchers.launcher_util import run_experiment
 import rlkit.torch.vae.vae_schedules as vae_schedules
+from multiworld.envs.mujoco.cameras import (
+    sawyer_pick_and_place_camera,
+)
+
 from rlkit.launchers.auto_experiments import auto_full_experiment
 from rlkit.torch.vae.conv_vae import imsize48_default_architecture
-from multiworld.envs.mujoco.sawyer_xyz.sawyer_push_nips import SawyerPushAndReachXYEasyEnv
 
 
 if __name__ == "__main__":
@@ -13,22 +16,8 @@ if __name__ == "__main__":
         double_algo=False,
         online_vae_exploration=False,
         imsize=48,
-        init_camera=sawyer_init_camera_zoomed_in,
-        # env_id='SawyerPushNIPSEasy-v0',
-        env_class=SawyerPushAndReachXYEasyEnv,
-        env_kwargs=dict(
-            force_puck_in_goal_space=False,
-            mocap_low=(-0.1, 0.5, 0.05),
-            mocap_high=(0.1, 0.7, 0.13),
-            hand_goal_low=(-0.1, 0.55),# 10*10*8 cm^3
-            hand_goal_high=(0.1, 0.65),
-            # puck_goal_low=(-0.1, 0.55, 0.05),# 10*10*8 cm^3
-            # puck_goal_high=(0.0, 0.65, 0.13),
-            hide_goal=True,
-            reward_info=dict(
-                type="state_distance",
-            ),
-        ),
+        init_camera=sawyer_pick_and_place_camera,
+        env_id='SawyerPickupEnvYZEasy-v0',
         skewfit_variant=dict(
             save_video=True,
             custom_goal_sampler='replay_buffer',
@@ -49,8 +38,8 @@ if __name__ == "__main__":
             max_path_length=50,
             algo_kwargs=dict(
                 batch_size=1024,
-                num_epochs=50,
-                num_eval_steps_per_epoch=5000,
+                num_epochs=100,
+                num_eval_steps_per_epoch=500,
                 num_expl_steps_per_train_loop=500,
                 num_trains_per_train_loop=3000,
                 min_num_steps_before_training=10000,
@@ -80,9 +69,10 @@ if __name__ == "__main__":
                 ),
                 power=0,
                 relabeling_goal_sampling_mode='vae_prior',
+                max_path_length=50,
             ),
             exploration_goal_sampling_mode='vae_prior',
-            evaluation_goal_sampling_mode='env',
+            evaluation_goal_sampling_mode='reset_of_env',
             normalize=False,
             render=False,
             exploration_noise=0.0,
@@ -100,10 +90,24 @@ if __name__ == "__main__":
         ),
         other_variant=dict(
             vae_pkl_path=None,
-            use_automatic_schedule=False,
-            automatic_policy_type='elbo',
-            automatic_policy_discount=0.2,
-            test_coverage=True,
+            use_autotune=False,
+            # Degree of judge VAE is fine-tuned well
+            auto_start_threshold=10, 
+            # autotune number of gradient updates
+            autotune_nogu=False,
+            autotune_nogu_mode='elbo',
+            autotune_nogu_discount=1,
+            # autotune exploration steps
+            autotune_expl=False,
+            autotune_expl_mode='elbo',
+            autotune_expl_multiplier=1,
+            # autotune the size of replay buffer
+            autotune_r_size=False,
+            autotune_r_size_mode='max_path_lenth_times_elbo',
+            # auto intrinsic
+            use_intrinsic_bonus=False,
+            intrinsic_reward='minus_log',
+            autotune_alpha=False,
         ),
         train_vae_variant=dict(
             representation_size=4,
@@ -156,7 +160,7 @@ if __name__ == "__main__":
 
     n_seeds = 5
     mode = 'ec2'
-    exp_prefix = 'rig-sac-push-l-ws-3000-coverage'
+    exp_prefix = 'rig-sac-pickup-enough'
 
     for exp_id, variant in enumerate(sweeper.iterate_hyperparameters()):
         for _ in range(n_seeds):

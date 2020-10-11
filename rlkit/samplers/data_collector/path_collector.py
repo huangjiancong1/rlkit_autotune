@@ -91,6 +91,7 @@ class GoalConditionedPathCollector(PathCollector):
             policy,
             max_num_epoch_paths_saved=None,
             render=False,
+            other_variant=None,
             render_kwargs=None,
             observation_key='observation',
             desired_goal_key='desired_goal',
@@ -108,6 +109,7 @@ class GoalConditionedPathCollector(PathCollector):
 
         self._num_steps_total = 0
         self._num_paths_total = 0
+        self.other_variant=other_variant
 
     def collect_new_paths(
             self,
@@ -125,6 +127,7 @@ class GoalConditionedPathCollector(PathCollector):
             path = multitask_rollout(
                 self._env,
                 self._policy,
+                other_variant=self.other_variant,
                 max_path_length=max_path_length_this_loop,
                 render=self._render,
                 render_kwargs=self._render_kwargs,

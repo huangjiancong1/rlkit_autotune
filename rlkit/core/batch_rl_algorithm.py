@@ -11,6 +11,10 @@ import math
 import os
 import numpy as np
 
+
+import psutil
+import os
+
 class BatchRLAlgorithm(BaseRLAlgorithm, metaclass=abc.ABCMeta):
     def __init__(
             self,
@@ -47,6 +51,16 @@ class BatchRLAlgorithm(BaseRLAlgorithm, metaclass=abc.ABCMeta):
         self.num_expl_steps_per_train_loop = num_expl_steps_per_train_loop
         self.min_num_steps_before_training = min_num_steps_before_training
         self.automatic_policy_schedule = automatic_policy_schedule
+        self.original_num_trains_per_train_loop = num_trains_per_train_loop
+        self.original_num_expl_steps_per_train_loop = num_expl_steps_per_train_loop
+        self.stable_number_of_elbo = 0
+        self.old_stable_number_of_elbo = 0
+
+        self.delta_elbo_stable_value = 0
+
+    def MaxMinNormalization(self,x,Max,Min):
+        x = (x - Min) / (Max - Min)
+        return x
 
     def _train(self):
         if self.min_num_steps_before_training > 0:
@@ -80,22 +94,37 @@ class BatchRLAlgorithm(BaseRLAlgorithm, metaclass=abc.ABCMeta):
 
             gt.stamp('evaluation sampling')
 
-            ## Automatic policy schedule
-            if self.automatic_policy_schedule['use_automatic_schedule']:
-                try:
-                    progress_recorder = pd.read_csv(self.automatic_policy_schedule['vae_pkl_path']+'/progress.csv').to_dict('l')
-                    if len(progress_recorder['vae_trainer/test/loss']) == 1:
-                        minus_elbo = 0
-                    else:
-
-                        minus_elbo = progress_recorder['vae_trainer/test/loss'][-1]
-                except:
+            try:
+                progress_recorder = pd.read_csv(self.automatic_policy_schedule['vae_pkl_path']+'/progress.csv').to_dict('l')
+                if len(progress_recorder['vae_trainer/test/loss']) == 1:
                     minus_elbo = 0
+                    old_minus_elbo = minus_elbo
+                else:
+                    minus_elbo = progress_recorder['vae_trainer/test/loss'][-1]
+                    old_minus_elbo = progress_recorder['vae_trainer/test/loss'][-2]
+            except:
+                minus_elbo = 0
+                old_minus_elbo = minus_elbo
 
-                if epoch > 0:
-                    if self.automatic_policy_schedule['automatic_policy_type'] == 'elbo': 
-                        discount = self.automatic_policy_schedule['automatic_policy_discount']
-                        self.num_trains_per_train_loop = int(discount*minus_elbo)
+            delta = abs(minus_elbo-old_minus_elbo)
+            self.delta_elbo_all_value = delta
+
+            if delta <= self.automatic_policy_schedule['auto_start_threshold'] and minus_elbo > 0:
+                self.old_stable_number_of_elbo = self.stable_number_of_elbo
+                self.stable_number_of_elbo = minus_elbo
+                self.delta_elbo_stable_value = self.stable_number_of_elbo - self.old_stable_number_of_elbo
+            
+            ## Autotune
+            if self.automatic_policy_schedule['use_autotune']:
+                if epoch > 1:
+                    if self.automatic_policy_schedule['autotune_nogu']: 
+                        if self.automatic_policy_schedule['autotune_nogu_mode'] == 'elbo':
+                            discount = self.automatic_policy_schedule['autotune_nogu_discount']
+                            self.num_trains_per_train_loop = int(discount*minus_elbo)
+
+                    if self.automatic_policy_schedule['autotune_expl']:
+                        if self.automatic_policy_schedule['autotune_expl_mode'] == 'elbo':
+                            self.num_expl_steps_per_train_loop = 1+int(minus_elbo)
 
             for _ in range(self.num_train_loops_per_epoch): #1
                 new_expl_paths = self.expl_data_collector.collect_new_paths(
@@ -109,6 +138,7 @@ class BatchRLAlgorithm(BaseRLAlgorithm, metaclass=abc.ABCMeta):
                 gt.stamp('data storing', unique=False)
 
                 self.training_mode(True)
+                
                 for _ in range(self.num_trains_per_train_loop):
                     train_data = self.replay_buffer.random_batch(
                         self.batch_size)
@@ -116,5 +146,15 @@ class BatchRLAlgorithm(BaseRLAlgorithm, metaclass=abc.ABCMeta):
                 gt.stamp('training', unique=False)
                 self.training_mode(False)
 
-            logger.record_tabular('Policy Iteration', self.num_trains_per_train_loop)
+            size_of_replay_buffer = self.replay_buffer.return_size_of_replay_buffer()
+            logger.record_tabular('The Size of Replay Buffer', size_of_replay_buffer)
+            logger.record_tabular('Memory Occupy', (psutil.Process(os.getpid()).memory_info().rss / 1024 / 1024 / 1024))
+
+            logger.record_tabular('Numbers of Gradients Updates', self.num_trains_per_train_loop)
+            logger.record_tabular('Exploration Steps', self.num_expl_steps_per_train_loop)
+            logger.record_tabular('Replay Buffer Stores', self.replay_buffer.replay_buffer_stores())
+            logger.record_tabular('Diversity of the Replay Buffer', self.stable_number_of_elbo)
+            logger.record_tabular('Stable Delta ELBO', self.delta_elbo_stable_value)
+            logger.record_tabular('All Delta ELBO', self.delta_elbo_all_value)
+
             self._end_epoch(epoch)

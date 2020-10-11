@@ -2,6 +2,10 @@ import rlkit.util.hyperparameter as hyp
 from multiworld.envs.mujoco.cameras import sawyer_init_camera_zoomed_in
 from rlkit.launchers.launcher_util import run_experiment
 import rlkit.torch.vae.vae_schedules as vae_schedules
+from multiworld.envs.mujoco.cameras import (
+    sawyer_pick_and_place_camera,
+)
+
 from rlkit.launchers.auto_experiments import auto_full_experiment
 from rlkit.torch.vae.conv_vae import imsize48_default_architecture
 
@@ -12,8 +16,8 @@ if __name__ == "__main__":
         double_algo=False,
         online_vae_exploration=False,
         imsize=48,
-        init_camera=sawyer_init_camera_zoomed_in,
-        env_id='SawyerReachXYZEnv-v0',
+        init_camera=sawyer_pick_and_place_camera,
+        env_id='SawyerPickupEnvYZEasy-v0',
         skewfit_variant=dict(
             save_video=True,
             custom_goal_sampler='replay_buffer',
@@ -34,14 +38,14 @@ if __name__ == "__main__":
             max_path_length=50,
             algo_kwargs=dict(
                 batch_size=1024,
-                num_epochs=200,
+                num_epochs=100,
                 num_eval_steps_per_epoch=500,
                 num_expl_steps_per_train_loop=500,
                 num_trains_per_train_loop=100,
-                min_num_steps_before_training=10000,
+                min_num_steps_before_training=500,
                 vae_training_schedule=vae_schedules.always_train,
                 oracle_data=False,
-                vae_save_period=50,
+                vae_save_period=2,
                 parallel_vae_train=False,
             ),
             twin_sac_trainer_kwargs=dict(
@@ -53,7 +57,7 @@ if __name__ == "__main__":
             ),
             replay_buffer_kwargs=dict(
                 start_skew_epoch=10,
-                max_size=int(300000),
+                max_size=int(1000),
                 fraction_goals_rollout_goals=0.2,
                 fraction_goals_env_goals=0.5,
                 exploration_rewards_type='None',
@@ -65,6 +69,7 @@ if __name__ == "__main__":
                 ),
                 power=0,
                 relabeling_goal_sampling_mode='vae_prior',
+                max_path_length=50,
             ),
             exploration_goal_sampling_mode='vae_prior',
             evaluation_goal_sampling_mode='reset_of_env',
@@ -85,18 +90,33 @@ if __name__ == "__main__":
         ),
         other_variant=dict(
             vae_pkl_path=None,
-            use_automatic_schedule=False,
-            automatic_policy_type='elbo',
-            automatic_policy_discount=0.2,
+            use_autotune=False,
+            # Degree of judge VAE is fine-tuned well
+            auto_start_threshold=10, 
+            # autotune number of gradient updates
+            autotune_nogu=False,
+            autotune_nogu_mode='elbo',
+            autotune_nogu_discount=1,
+            # autotune exploration steps
+            autotune_expl=False,
+            autotune_expl_mode='delta_times_max_path_lenth',
+            autotune_expl_multiplier=1,
+            # autotune the size of replay buffer
+            autotune_r_size=False,
+            autotune_r_size_mode='max_path_lenth_times_elbo',
+            # auto intrinsic
+            use_intrinsic_bonus=False,
+            intrinsic_reward='minus_log',
+            autotune_alpha=False,
         ),
         train_vae_variant=dict(
             representation_size=4,
             beta=20,
-            num_epochs=1500,
+            num_epochs=1,
             dump_skew_debug_plots=False,
             decoder_activation='gaussian',
             generate_vae_dataset_kwargs=dict(
-                N=10000,
+                N=40,
                 test_p=.9,
                 use_cached=False,
                 show=False,
@@ -140,7 +160,7 @@ if __name__ == "__main__":
 
     n_seeds = 5
     mode = 'ec2'
-    exp_prefix = 'rig-sac-reach-100'
+    exp_prefix = 'rig-sac-pickup-rsize-1000'
 
     for exp_id, variant in enumerate(sweeper.iterate_hyperparameters()):
         for _ in range(n_seeds):
