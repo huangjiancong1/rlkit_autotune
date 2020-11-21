@@ -1,5 +1,5 @@
 """
-Copy this file to config.py and modify as needed.
+copy this file to config.py and modify as needed.
 """
 import os
 from os.path import join
@@ -150,3 +150,4 @@ try:
     from rlkit.launchers.conf_private import *
 except ImportError:
     print("No personal conf_private.py found.")
+
