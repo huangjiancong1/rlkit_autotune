@@ -2,7 +2,6 @@
 **/.DS_STORE
 **/*.pyc
 **/*.swp
-rlkit/launchers/config.py
 rlkit/launchers/conf_private.py
 MANIFEST
 *.egg-info
@@ -20,3 +19,4 @@ data/*
 */result
 */MNIST
 *conf.py
+*__pycache__/
