@@ -1,9 +1,12 @@
 # Autotune
 
 ## 1. Installation
-Install https://github.com/vitchyr/multiworld and `pip install -e .` (Similar with https://github.com/vitchyr/rlkit)
+Install https://github.com/vitchyr/multiworld and `pip install -e .` (Similar with https://github.com/vitchyr/rlkit).
+Pytorch version: `1.1.0` with or without gpu is ok.
 
-Create your personal `rlkit/launchers/config.py` like: https://drive.google.com/file/d/1Nl-olFC-h5MRG91QoDirEoZb0iF5AmYj/view?usp=sharing
+Create your personal `rlkit/launchers/config.py` like: https://drive.google.com/file/d/1Nl-olFC-h5MRG91QoDirEoZb0iF5AmYj/view?usp=sharing.
+
+
 
 ## 2. The Simulated Experiment
 ```
