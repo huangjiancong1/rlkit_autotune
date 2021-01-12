@@ -1,36 +1,31 @@
 import rlkit.util.hyperparameter as hyp
-from multiworld.envs.mujoco.cameras import sawyer_init_camera_zoomed_in
 from rlkit.launchers.launcher_util import run_experiment
 import rlkit.torch.vae.vae_schedules as vae_schedules
 from rlkit.launchers.auto_experiments import auto_full_experiment
-from rlkit.torch.vae.conv_vae import imsize48_default_architecture
-from multiworld.envs.mujoco.sawyer_xyz.sawyer_push_nips import SawyerPushAndReachXYEasyEnv
+from rlkit.torch.vae.conv_vae import imsize48_default_architecture, imsize48_default_architecture_with_more_hidden_layers
 
+from multiworld.envs.pygame.multiobject_pygame_env import Multiobj2DWallEnv
 
 if __name__ == "__main__":
     variant = dict(
-        algorithm='RIG-SAC-Automatic',
+        algorithm='RIG-SAC-Autotune',
         double_algo=False,
         online_vae_exploration=False,
         imsize=48,
-        init_camera=sawyer_init_camera_zoomed_in,
-        # env_id='SawyerPushNIPSEasy-v0',
-        env_class=SawyerPushAndReachXYEasyEnv,
+        # init_camera=sawyer_init_camera_zoomed_in,
+        env_class=Multiobj2DWallEnv,
         env_kwargs=dict(
-            force_puck_in_goal_space=False,
-            mocap_low=(-0.1, 0.55, 0.05),
-            mocap_high=(0.0, 0.65, 0.13),
-            hand_goal_low=(-0.1, 0.55),# 10*10*8 cm^3
-            hand_goal_high=(0.0, 0.65),
-            # puck_goal_low=(-0.1, 0.55, 0.05),# 10*10*8 cm^3
-            # puck_goal_high=(0.0, 0.65, 0.13),
-            hide_goal=True,
-            reward_info=dict(
-                type="state_distance",
-            ),
-        ),
+           render_onscreen=False,
+           ball_radius=1.2,
+           wall_thickness=1.5,
+           inner_wall_max_dist=1.5,
+           images_are_rgb=True,
+           show_goal=False,
+           change_colors=False,
+           change_walls=False,
+       ),
         skewfit_variant=dict(
-            save_video=True,
+            save_video=False,
             custom_goal_sampler='replay_buffer',
             online_vae_trainer_kwargs=dict(
                 beta=20,
@@ -49,14 +44,14 @@ if __name__ == "__main__":
             max_path_length=50,
             algo_kwargs=dict(
                 batch_size=1024,
-                num_epochs=100,
+                num_epochs=50,
                 num_eval_steps_per_epoch=500,
-                num_expl_steps_per_train_loop=500,
-                num_trains_per_train_loop=100,
+                num_expl_steps_per_train_loop=3432,
+                num_trains_per_train_loop=2943,
                 min_num_steps_before_training=10000,
                 vae_training_schedule=vae_schedules.always_train,
                 oracle_data=False,
-                vae_save_period=50,
+                vae_save_period=25,
                 parallel_vae_train=False,
             ),
             twin_sac_trainer_kwargs=dict(
@@ -68,7 +63,7 @@ if __name__ == "__main__":
             ),
             replay_buffer_kwargs=dict(
                 start_skew_epoch=10,
-                max_size=int(300000),
+                max_size=int(182087),
                 fraction_goals_rollout_goals=0.2,
                 fraction_goals_env_goals=0.5,
                 exploration_rewards_type='None',
@@ -107,11 +102,9 @@ if __name__ == "__main__":
             # autotune number of gradient updates
             autotune_nogu=False,
             autotune_nogu_mode='elbo',
-            autotune_nogu_discount=1,
             # autotune exploration steps
             autotune_expl=False,
             autotune_expl_mode='elbo',
-            autotune_expl_multiplier=1,
             # autotune the size of replay buffer
             autotune_r_size=False,
             autotune_r_size_mode='max_path_lenth_times_elbo',
@@ -119,13 +112,15 @@ if __name__ == "__main__":
             use_intrinsic_bonus=False,
             intrinsic_reward='minus_log',
             autotune_alpha=False,
+            # ksi hyperparameter
+            autotune_xi=0.6,
         ),
         train_vae_variant=dict(
             representation_size=4,
             beta=20,
             num_epochs=1500,
             dump_skew_debug_plots=False,
-            decoder_activation='gaussian',
+            decoder_activation='sigmoid',
             generate_vae_dataset_kwargs=dict(
                 N=10000,
                 test_p=.9,
@@ -138,7 +133,7 @@ if __name__ == "__main__":
             ),
             vae_kwargs=dict(
                 input_channels=3,
-                architecture=imsize48_default_architecture,
+                architecture=imsize48_default_architecture_with_more_hidden_layers,
                 decoder_distribution='gaussian_identity_variance',
             ),
             # TODO: why the redundancy?
@@ -171,7 +166,7 @@ if __name__ == "__main__":
 
     n_seeds = 5
     mode = 'ec2'
-    exp_prefix = 'rig-sac-push-nogu-100'
+    exp_prefix = 'rig-sac-pointmass-opted'
 
     for exp_id, variant in enumerate(sweeper.iterate_hyperparameters()):
         for _ in range(n_seeds):

@@ -65,7 +65,8 @@ class ObsDictRelabelingBuffer(ReplayBuffer):
             self._action_dim = env.action_space.n
         else:
             self._action_dim = env.action_space.low.size
-            
+
+        self.all_path_lengths = np.zeros((max_size, 1))
         self._intrinsic_rewards = np.zeros((max_size, 1))
         self._extrinsic_rewards = np.zeros((max_size, 1))
 
@@ -87,8 +88,9 @@ class ObsDictRelabelingBuffer(ReplayBuffer):
             self._next_obs[key] = np.zeros(
                 (max_size, self.ob_spaces[key].low.size), dtype=type)
 
-        self._top = 0
+        self._top = 0 # _top is the first number of the slice'number (index num) ready to replay with the novel transitions
         self._size = 0
+        self._actual_size = 0 # TODO: improve from without use
 
         # Let j be any index in self._idx_to_future_obs_idx[i]
         # Then self._next_obs[j] is a valid next observation for observation i
@@ -145,23 +147,58 @@ class ObsDictRelabelingBuffer(ReplayBuffer):
         
         else:
             self.tune_r_size = False
-        
+
         ## Autotune
+        xi = self.automatic_policy_schedule['autotune_xi']
         if self.automatic_policy_schedule['use_autotune']:
             try:
                 if len(progress_recorder['vae_trainer/test/loss']) > 1:
-                    if self.automatic_policy_schedule['autotune_r_size']: 
+                    if self.automatic_policy_schedule['autotune_r_size']:
                         if self.automatic_policy_schedule['autotune_r_size_mode'] == 'max_path_lenth_times_elbo':
-                            self.max_size = int(self.max_path_length*minus_elbo)
-                            ## Make the self.max_size is divisible by 1000
-                            # TODO: should not be 1000 but a parameters
-                            self.max_size = self.max_size + 1000-(self.max_size%1000)
-                            # For Debug
-                            # self.max_size = 1500
+                            computed_max_size = int(self.max_path_length*xi*minus_elbo)
+                            computed_max_size = np.clip(computed_max_size, 100, 300000) # Fixed to current comupter's capability
 
-                            if self.max_size > len(self._actions):
-                                should_add = self.max_size - len(self._actions)
+                            ######## Compare with the computed_max_size To cut or add length of replay buffer ########
+
+                            # We can not remove the stored transition because the possible future goals may come from the deletion
+                            if self.max_size > computed_max_size and self._size <= computed_max_size: 
+                                should_delete = self.max_size - computed_max_size
+                                self._actions = np.delete(self._actions, np.s_[computed_max_size:self.max_size], axis=0)
+                                self.all_path_lengths = np.delete(self.all_path_lengths, np.s_[computed_max_size:self.max_size], axis=0)
+                                self._intrinsic_rewards = np.delete(self._intrinsic_rewards, np.s_[computed_max_size:self.max_size], axis=0)
+                                self._terminals = np.delete(self._terminals, np.s_[computed_max_size:self.max_size], axis=0)
+                                for key in self.ob_keys_to_save + self.internal_keys:
+                                    self._obs[key] = np.delete(self._obs[key], np.s_[computed_max_size:self.max_size], axis=0)
+                                    self._next_obs[key] = np.delete(self._next_obs[key], np.s_[computed_max_size:self.max_size], axis=0)
+                                del self._idx_to_future_obs_idx[computed_max_size:self.max_size]
+                                # gc.collect()
+                                self.max_size = computed_max_size
+                                                                                    
+                            ## We can remove the whole trajectory because not possible future goals may come from the deletion if use 'self._top = 0'
+                            if self.max_size > computed_max_size and self._size > computed_max_size: 
+                                last_traj_idx = self.all_path_lengths[computed_max_size][-1] ## last trajectory idx
+                                should_delete = self.max_size - last_traj_idx
+                                self._actions = np.delete(self._actions, np.s_[last_traj_idx:self.max_size], axis=0)
+                                self.all_path_lengths = np.delete(self.all_path_lengths, np.s_[last_traj_idx:self.max_size], axis=0)
+                                self._intrinsic_rewards = np.delete(self._intrinsic_rewards, np.s_[last_traj_idx:self.max_size], axis=0)
+                                self._terminals = np.delete(self._terminals, np.s_[last_traj_idx:self.max_size], axis=0)
+                                for key in self.ob_keys_to_save + self.internal_keys:
+                                    self._obs[key] = np.delete(self._obs[key], np.s_[last_traj_idx:self.max_size], axis=0)
+                                    self._next_obs[key] = np.delete(self._next_obs[key], np.s_[last_traj_idx:self.max_size], axis=0)
+                                del self._idx_to_future_obs_idx[last_traj_idx:self.max_size]
+                                # gc.collect()
+                                self.max_size = last_traj_idx
+                            
+                            if self._size > computed_max_size:
+                                ## Count how many useful state from buffer and the useful deletion
+                                self._actual_size = self._size
+                                # self.max_size = self._size ##TODO: why should'n use here currently?
+
+                            ## To add the transitions grid to save the future samples from self.max_size
+                            if self.max_size < computed_max_size and self._actual_size <= self.max_size:
+                                should_add = computed_max_size - self.max_size
                                 self._actions = np.pad(self._actions,((0,should_add),(0,0)),'constant',constant_values = 0)
+                                self.all_path_lengths = np.pad(self.all_path_lengths,((0,should_add),(0,0)),'constant',constant_values = 0)
                                 self._intrinsic_rewards = np.pad(self._intrinsic_rewards,((0,should_add),(0,0)),'constant',constant_values = 0)
                                 self._terminals = np.pad(self._terminals,((0,should_add),(0,0)),'constant',constant_values = 0)
                                 for key in self.ob_keys_to_save + self.internal_keys:
@@ -169,19 +206,28 @@ class ObsDictRelabelingBuffer(ReplayBuffer):
                                     self._next_obs[key] = np.pad(self._next_obs[key], ((0,should_add),(0,0)), 'constant', constant_values = 0)
                                 for i in range(should_add):
                                     self._idx_to_future_obs_idx.append(None)
-
-                            if self.max_size < len(self._actions):
-                                should_delete = len(self._actions) - self.max_size
-                                self._actions = np.delete(self._actions, np.s_[self.max_size:len(self._actions)], axis=0)
-                                self._intrinsic_rewards = np.delete(self._intrinsic_rewards, np.s_[self.max_size:len(self._intrinsic_rewards)], axis=0)
-                                self._terminals = np.delete(self._terminals, np.s_[self.max_size:len(self._terminals)], axis=0)
+                                self.max_size = computed_max_size
+                            
+                            ## To add the transitions grid to save the future samples from self._actual_size
+                            if self.max_size < computed_max_size and computed_max_size >= self._actual_size: 
+                                should_add = computed_max_size - self._actual_size
+                                self._actions = np.pad(self._actions,((0,should_add),(0,0)),'constant',constant_values = 0)
+                                self.all_path_lengths = np.pad(self.all_path_lengths,((0,should_add),(0,0)),'constant',constant_values = 0)
+                                self._intrinsic_rewards = np.pad(self._intrinsic_rewards,((0,should_add),(0,0)),'constant',constant_values = 0)
+                                self._terminals = np.pad(self._terminals,((0,should_add),(0,0)),'constant',constant_values = 0)
                                 for key in self.ob_keys_to_save + self.internal_keys:
-                                    self._obs[key] = np.delete(self._obs[key], np.s_[self.max_size:len(self._obs[key])], axis=0)
-                                    self._next_obs[key] = np.delete(self._next_obs[key], np.s_[self.max_size:len(self._next_obs[key])], axis=0)
-                                del self._idx_to_future_obs_idx[self.max_size:len(self._idx_to_future_obs_idx)]
+                                    self._obs[key] = np.pad(self._obs[key], ((0,should_add),(0,0)), 'constant', constant_values = 0)
+                                    self._next_obs[key] = np.pad(self._next_obs[key], ((0,should_add),(0,0)), 'constant', constant_values = 0)
+                                for i in range(should_add):
+                                    self._idx_to_future_obs_idx.append(None)
+                                self.max_size = computed_max_size
 
+                            ## If equal of when equal after previous loop's computed
+                            if self.max_size == computed_max_size:
+                                self.max_size = computed_max_size
                     else: 
                         self.max_size = self.original_max_size
+
             except:
                 pass
 
@@ -190,45 +236,28 @@ class ObsDictRelabelingBuffer(ReplayBuffer):
             All of this logic is to handle wrapping the pointer when the
             replay buffer gets full.
             """
-            num_pre_wrap_steps = self.max_size - self._top
-            # numpy slice
-            pre_wrap_buffer_slice = np.s_[
-                                    self._top:self._top + num_pre_wrap_steps, :
-                                    ]
-            pre_wrap_path_slice = np.s_[0:num_pre_wrap_steps, :]
+            self._top = 0
+            self._size = self.max_size
+            slc = np.s_[self._top:self._top + path_len, :]
 
-            num_post_wrap_steps = path_len - num_pre_wrap_steps
-            post_wrap_buffer_slice = slice(0, num_post_wrap_steps)
-            post_wrap_path_slice = slice(num_pre_wrap_steps, path_len)
-            for buffer_slice, path_slice in [
-                (pre_wrap_buffer_slice, pre_wrap_path_slice),
-                (post_wrap_buffer_slice, post_wrap_path_slice),
-            ]:
-                self._actions[buffer_slice] = actions[path_slice]
-                self._terminals[buffer_slice] = terminals[path_slice]
-                self._intrinsic_rewards[buffer_slice] = intrinsic_rewards[path_slice]
-
-                for key in self.ob_keys_to_save + self.internal_keys:
-                    self._obs[key][buffer_slice] = obs[key][path_slice]
-                    self._next_obs[key][buffer_slice] = next_obs[key][path_slice]
-            # Pointers from before the wrap
-            for i in range(self._top, self.max_size):
-                self._idx_to_future_obs_idx[i] = np.hstack((
-                    # Pre-wrap indices
-                    np.arange(i, self.max_size),
-                    # Post-wrap indices
-                    np.arange(0, num_post_wrap_steps)
-                ))
-            # Pointers after the wrap
-            for i in range(0, num_post_wrap_steps):
-                self._idx_to_future_obs_idx[i] = np.arange(
-                    i,
-                    num_post_wrap_steps,
+            self._actions[slc] = actions
+            self.all_path_lengths[slc] = path_len
+            self._intrinsic_rewards[slc] = intrinsic_rewards
+            self._terminals[slc] = terminals
+            
+            for key in self.ob_keys_to_save + self.internal_keys:
+                self._obs[key][slc] = obs[key]
+                self._next_obs[key][slc] = next_obs[key]
+            for i in range(self._top, self._top + path_len):
+                self._idx_to_future_obs_idx[i] = np.arange( 
+                    i, self._top + path_len
                 )
+                
         else:
             slc = np.s_[self._top:self._top + path_len, :]
 
             self._actions[slc] = actions
+            self.all_path_lengths[slc] = path_len
             self._intrinsic_rewards[slc] = intrinsic_rewards
             self._terminals[slc] = terminals
             
@@ -240,27 +269,34 @@ class ObsDictRelabelingBuffer(ReplayBuffer):
                     i, self._top + path_len
                 )
         self._top = (self._top + path_len) % self.max_size
-        self._size = min(self._size + path_len, self.max_size)
-
-    # TODO: The bug of future indice out of self._idx_to_future_obs_idx[i] may come from here
-    # def _sample_indices(self, batch_size):
-    #     return np.random.randint(0, self._size, batch_size)
+        self._size = min(self._size + path_len, self.max_size)  
 
     def _sample_indices(self, batch_size):
-        size = min(self._size, self.max_size)
-        return np.random.randint(0, size, batch_size)
+        actual_length = self.count_the_not_none(self._idx_to_future_obs_idx)
+        return np.random.randint(0, actual_length-1, batch_size)
+
+    def count_the_not_none(self, future_idx):
+        num_of_none=1
+        for i in future_idx:
+            if i is None:
+                num_of_none+=1
+        return len(future_idx)-num_of_none
 
     def _sample_odd_indices(self, batch_size):
-        random_num = np.random.randint(0, int(self._size/2)-1, batch_size)
+        random_num = np.random.randint(0, int(self._size/2), batch_size)
         return random_num*2+1
       
     def _sample_even_indices(self, batch_size):
-        random_num = np.random.randint(0, int(self._size/2)-1, batch_size)
+        random_num = np.random.randint(0, int(self._size/2), batch_size)
         return random_num*2
 
     def replay_buffer_stores(self,):
         # How many trsnditiond stored in replay buffer
         return self._size
+
+    def replay_buffer_stores_actual(self,):
+        # How many trsnditiond stored in replay buffer
+        return self._actual_size
 
     def return_size_of_replay_buffer(self,):
         size_of_replay_buffer = self.max_size
@@ -290,15 +326,9 @@ class ObsDictRelabelingBuffer(ReplayBuffer):
                 num_rollout_goals:last_env_goal_idx] = \
                     env_goals[goal_key]
         if num_future_goals > 0:
+            ## -----------1d469a509b797ca04a39b8734c1816ca7d108fc8--------
             future_obs_idxs = []
-            
-            # Debug logging
-            # print("Length indices: ", len(indices))
-            # print("Length self._idx_to_future_obs_idx: ", len(self._idx_to_future_obs_idx))
-            # print("indices[-num_future_goals:] ", indices[-num_future_goals:])
-            # print("print self._idx_to_future_obs_idx ", self._idx_to_future_obs_idx)
             for i in indices[-num_future_goals:]:
-                # print("self._idx_to_future_obs_idx[i]", self._idx_to_future_obs_idx[i])
                 possible_future_obs_idxs = self._idx_to_future_obs_idx[i]
                 # This is generally faster than random.choice. Makes you wonder what
                 # random.choice is doing
@@ -306,9 +336,27 @@ class ObsDictRelabelingBuffer(ReplayBuffer):
                 next_obs_i = int(np.random.randint(0, num_options))
                 future_obs_idxs.append(possible_future_obs_idxs[next_obs_i])
             future_obs_idxs = np.array(future_obs_idxs)
+            ## ---------------------------------------------------------
+
+            ## ---------5274672e9ff6481def0ffed61cd1b1c52210a840----------
+            # future_indices = indices[-num_future_goals:]
+            # possible_future_obs_lens = np.array([
+            #     len(self._idx_to_future_obs_idx[i]) for i in future_indices
+            # ])
+            # # Faster than a naive for-loop.
+            # # See https://github.com/vitchyr/rlkit/pull/112 for details.
+            # next_obs_idxs = (
+            #     np.random.random(num_future_goals) * possible_future_obs_lens
+            # ).astype(np.int)
+            # future_obs_idxs = np.array([
+            #     self._idx_to_future_obs_idx[ids][next_obs_idxs[i]]
+            #     for i, ids in enumerate(future_indices)
+            # ])
+            ## ---------------------------------------------------------            
             resampled_goals[-num_future_goals:] = self._next_obs[
                 self.achieved_goal_key
             ][future_obs_idxs]
+
             for goal_key in self.goal_keys:
                 new_obs_dict[goal_key][-num_future_goals:] = \
                     self._next_obs[goal_key][future_obs_idxs]

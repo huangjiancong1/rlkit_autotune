@@ -49,14 +49,14 @@ if __name__ == "__main__":
             max_path_length=50,
             algo_kwargs=dict(
                 batch_size=1024,
-                num_epochs=200,
+                num_epochs=50,
                 num_eval_steps_per_epoch=500,
-                num_expl_steps_per_train_loop=100,
-                num_trains_per_train_loop=100,
-                min_num_steps_before_training=500,
+                num_expl_steps_per_train_loop=2852,
+                num_trains_per_train_loop=2799,
+                min_num_steps_before_training=10000,
                 vae_training_schedule=vae_schedules.always_train,
                 oracle_data=False,
-                vae_save_period=2,
+                vae_save_period=25,
                 parallel_vae_train=False,
             ),
             twin_sac_trainer_kwargs=dict(
@@ -68,7 +68,7 @@ if __name__ == "__main__":
             ),
             replay_buffer_kwargs=dict(
                 start_skew_epoch=10,
-                max_size=int(300000),
+                max_size=int(154375),
                 fraction_goals_rollout_goals=0.2,
                 fraction_goals_env_goals=0.5,
                 exploration_rewards_type='None',
@@ -80,6 +80,7 @@ if __name__ == "__main__":
                 ),
                 power=0,
                 relabeling_goal_sampling_mode='vae_prior',
+                max_path_length=50,
             ),
             exploration_goal_sampling_mode='vae_prior',
             evaluation_goal_sampling_mode='reset_of_env',
@@ -105,25 +106,28 @@ if __name__ == "__main__":
             auto_start_threshold=10, 
             # autotune number of gradient updates
             autotune_nogu=False,
-            autotune_nogu_mode='None',
-            autotune_nogu_discount=1,
+            autotune_nogu_mode='elbo',
             # autotune exploration steps
-            autotune_expl=True,
-            autotune_expl_mode='delta',
-            autotune_expl_multiplier=50,
+            autotune_expl=False,
+            autotune_expl_mode='elbo',
+            # autotune the size of replay buffer
+            autotune_r_size=False,
+            autotune_r_size_mode='max_path_lenth_times_elbo',
             # auto intrinsic
             use_intrinsic_bonus=False,
             intrinsic_reward='minus_log',
             autotune_alpha=False,
+            # ksi hyperparameter
+            autotune_xi=1.142,
         ),
         train_vae_variant=dict(
             representation_size=4,
             beta=20,
-            num_epochs=1,
+            num_epochs=1500,
             dump_skew_debug_plots=False,
             decoder_activation='gaussian',
             generate_vae_dataset_kwargs=dict(
-                N=40,
+                N=10000,
                 test_p=.9,
                 use_cached=False,
                 show=False,
@@ -167,7 +171,7 @@ if __name__ == "__main__":
 
     n_seeds = 5
     mode = 'ec2'
-    exp_prefix = 'rig-sac-push-nogu-100-expl-100'
+    exp_prefix = 'rig-sac-push-opted'
 
     for exp_id, variant in enumerate(sweeper.iterate_hyperparameters()):
         for _ in range(n_seeds):

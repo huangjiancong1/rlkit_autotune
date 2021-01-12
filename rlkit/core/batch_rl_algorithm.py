@@ -115,16 +115,20 @@ class BatchRLAlgorithm(BaseRLAlgorithm, metaclass=abc.ABCMeta):
                 self.delta_elbo_stable_value = self.stable_number_of_elbo - self.old_stable_number_of_elbo
             
             ## Autotune
+            xi = self.automatic_policy_schedule['autotune_xi']
             if self.automatic_policy_schedule['use_autotune']:
                 if epoch > 1:
                     if self.automatic_policy_schedule['autotune_nogu']: 
                         if self.automatic_policy_schedule['autotune_nogu_mode'] == 'elbo':
-                            discount = self.automatic_policy_schedule['autotune_nogu_discount']
-                            self.num_trains_per_train_loop = int(discount*minus_elbo)
+                            self.num_trains_per_train_loop = int(xi*minus_elbo)
+                            # Fixed to local comupter's capability
+                            self.num_trains_per_train_loop = np.clip(self.num_trains_per_train_loop, 100, 6000) 
 
                     if self.automatic_policy_schedule['autotune_expl']:
                         if self.automatic_policy_schedule['autotune_expl_mode'] == 'elbo':
-                            self.num_expl_steps_per_train_loop = 1+int(minus_elbo)
+                            self.num_expl_steps_per_train_loop = 1+int(xi*minus_elbo)
+                             # Fixed to local comupter's capability
+                            self.num_expl_steps_per_train_loop = np.clip(self.num_expl_steps_per_train_loop, 100, 6000)
 
             for _ in range(self.num_train_loops_per_epoch): #1
                 new_expl_paths = self.expl_data_collector.collect_new_paths(
@@ -153,6 +157,7 @@ class BatchRLAlgorithm(BaseRLAlgorithm, metaclass=abc.ABCMeta):
             logger.record_tabular('Numbers of Gradients Updates', self.num_trains_per_train_loop)
             logger.record_tabular('Exploration Steps', self.num_expl_steps_per_train_loop)
             logger.record_tabular('Replay Buffer Stores', self.replay_buffer.replay_buffer_stores())
+            logger.record_tabular('(Acutal) Replay Buffer Stores', self.replay_buffer.replay_buffer_stores_actual())
             logger.record_tabular('Diversity of the Replay Buffer', self.stable_number_of_elbo)
             logger.record_tabular('Stable Delta ELBO', self.delta_elbo_stable_value)
             logger.record_tabular('All Delta ELBO', self.delta_elbo_all_value)
