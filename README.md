@@ -21,6 +21,8 @@ git checkout ros
 python examples/rig_sac_automatic/elfin_reach_auto.py
 ```
 
-## 4. Other
-Video about how the diversity of the hardware environment change online: https://drive.google.com/file/d/1GLYQ4bP7t_oQQhuy84qsk1WMIcPAomP0/view?usp=sharing
-.
+## References
+The algorithm of Auto-tuning is based on the following paper:
+
+[Hyperparameter Auto-tuning in Self-Supervised Robotic Learning](https://arxiv.org/abs/2010.08252). Jiancong Huang, Juan Rojas, Matthieu Zimmer, Hongmin Wu, Yisheng Guan, and Paul Weng. arXiv preprint, 2021.
+
